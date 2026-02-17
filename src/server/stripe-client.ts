@@ -14,7 +14,7 @@ export function initStripe(config: StripeSDKConfig): Stripe {
     maxNetworkRetries: config.maxNetworkRetries ?? 2,
     appInfo: config.appInfo ?? {
       name: '@stripe-sdk/core',
-      version: '1.0.0',
+      version: '1.0.1',
     },
   });
   return stripeInstance;

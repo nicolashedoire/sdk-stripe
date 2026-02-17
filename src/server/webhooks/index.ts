@@ -102,7 +102,7 @@ export function createNextWebhookHandler(config: WebhookConfig) {
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (error) {
-      console.error('[@stripe-sdk/core] Webhook error:', error);
+      console.error('[@stripe-sdk/core] Webhook error:', error instanceof Error ? error.message : 'Unknown error');
 
       return new Response(JSON.stringify({ error: 'Webhook processing failed' }), {
         status: 400,
@@ -139,7 +139,7 @@ export function createPagesWebhookHandler(webhookConfig: WebhookConfig) {
       const result = await handler(body, signature);
       res.status(200).json(result);
     } catch (error) {
-      console.error('[@stripe-sdk/core] Webhook error:', error);
+      console.error('[@stripe-sdk/core] Webhook error:', error instanceof Error ? error.message : 'Unknown error');
       res.status(400).json({ error: 'Webhook processing failed' });
     }
   };

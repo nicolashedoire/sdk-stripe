@@ -59,6 +59,10 @@ export type AuthorizeFn = (request: Request) => Promise<boolean | void>;
  * ```
  */
 export function createActions(config: { authorize: () => Promise<boolean | void> }) {
+  if (typeof config?.authorize !== 'function') {
+    throw new Error('[@stripe-sdk/core] createActions requires an authorize callback');
+  }
+
   async function checkAuth(): Promise<void> {
     const result = await config.authorize();
     if (result === false) {
@@ -130,6 +134,29 @@ function errorResponse(message: string, status: number): Response {
   });
 }
 
+function validateRouteOptions<T>(options: RouteOptions<T>): void {
+  if (typeof options?.authorize !== 'function') {
+    throw new Error('[@stripe-sdk/core] Route helpers require an authorize callback');
+  }
+}
+
+function ensureJsonContentType(request: Request): Response | null {
+  const contentType = request.headers.get('content-type');
+  if (!contentType?.includes('application/json')) {
+    return errorResponse('Content-Type must be application/json', 415);
+  }
+  return null;
+}
+
+async function parseJsonBody<T>(request: Request): Promise<{ data: T } | { error: Response }> {
+  try {
+    const data = await request.json() as T;
+    return { data };
+  } catch {
+    return { error: errorResponse('Invalid JSON in request body', 400) };
+  }
+}
+
 /**
  * Creates a Next.js API route handler for creating payment intents.
  * Requires an `authorize` callback for authentication.
@@ -152,12 +179,19 @@ function errorResponse(message: string, status: number): Response {
  * ```
  */
 export function createPaymentIntentRoute(options: RouteOptions<CreatePaymentIntentInput>) {
+  validateRouteOptions(options);
+
   return async function POST(request: Request): Promise<Response> {
     try {
+      const ctError = ensureJsonContentType(request);
+      if (ctError) return ctError;
+
       const authResult = await options.authorize(request);
       if (authResult === false) return errorResponse('Unauthorized', 401);
 
-      let input: CreatePaymentIntentInput = await request.json();
+      const parsed = await parseJsonBody<CreatePaymentIntentInput>(request);
+      if ('error' in parsed) return parsed.error;
+      let input = parsed.data;
 
       if (options.beforeCreate) {
         input = await options.beforeCreate(input, request);
@@ -187,12 +221,19 @@ export function createPaymentIntentRoute(options: RouteOptions<CreatePaymentInte
  * Requires an `authorize` callback for authentication.
  */
 export function createCheckoutSessionRoute(options: RouteOptions<CreateCheckoutSessionInput>) {
+  validateRouteOptions(options);
+
   return async function POST(request: Request): Promise<Response> {
     try {
+      const ctError = ensureJsonContentType(request);
+      if (ctError) return ctError;
+
       const authResult = await options.authorize(request);
       if (authResult === false) return errorResponse('Unauthorized', 401);
 
-      let input: CreateCheckoutSessionInput = await request.json();
+      const parsed = await parseJsonBody<CreateCheckoutSessionInput>(request);
+      if ('error' in parsed) return parsed.error;
+      let input = parsed.data;
 
       if (options.beforeCreate) {
         input = await options.beforeCreate(input, request);
@@ -222,12 +263,19 @@ export function createCheckoutSessionRoute(options: RouteOptions<CreateCheckoutS
  * Requires an `authorize` callback for authentication.
  */
 export function createPortalSessionRoute(options: RouteOptions<CreatePortalSessionInput>) {
+  validateRouteOptions(options);
+
   return async function POST(request: Request): Promise<Response> {
     try {
+      const ctError = ensureJsonContentType(request);
+      if (ctError) return ctError;
+
       const authResult = await options.authorize(request);
       if (authResult === false) return errorResponse('Unauthorized', 401);
 
-      let input: CreatePortalSessionInput = await request.json();
+      const parsed = await parseJsonBody<CreatePortalSessionInput>(request);
+      if ('error' in parsed) return parsed.error;
+      let input = parsed.data;
 
       if (options.beforeCreate) {
         input = await options.beforeCreate(input, request);
