@@ -12,7 +12,7 @@ export default defineConfig([
     format: ['cjs', 'esm'],
     dts: true,
     splitting: false,
-    sourcemap: true,
+    sourcemap: false,
     clean: true,
     external: ['react', 'react-dom', 'next', 'stripe', '@stripe/stripe-js', '@stripe/react-stripe-js'],
     treeshake: true,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useStripe, useElements } from '@stripe/react-stripe-js';
 
 interface PaymentState {
@@ -16,9 +16,22 @@ interface UsePaymentOptions {
   returnUrl?: string;
 }
 
+function validateReturnUrl(url: string): void {
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('returnUrl must use http or https protocol');
+    }
+  } catch {
+    throw new Error('returnUrl must be a valid URL');
+  }
+}
+
 export function usePayment(options?: UsePaymentOptions) {
   const stripe = useStripe();
   const elements = useElements();
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const [state, setState] = useState<PaymentState>({
     isProcessing: false,
@@ -35,12 +48,17 @@ export function usePayment(options?: UsePaymentOptions) {
       return { success: false, error: 'Stripe not loaded yet' };
     }
 
+    const returnUrl = overrides?.returnUrl ?? optionsRef.current?.returnUrl ?? (typeof window !== 'undefined' ? window.location.href : '');
+    if (returnUrl && returnUrl !== window.location.href) {
+      validateReturnUrl(returnUrl);
+    }
+
     setState({ isProcessing: true, isSuccess: false, error: null, paymentIntentId: null });
 
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: overrides?.returnUrl ?? options?.returnUrl ?? (typeof window !== 'undefined' ? window.location.href : ''),
+        return_url: returnUrl,
       },
       redirect: 'if_required',
     });
@@ -48,19 +66,19 @@ export function usePayment(options?: UsePaymentOptions) {
     if (error) {
       const message = error.message ?? 'Payment failed';
       setState({ isProcessing: false, isSuccess: false, error: message, paymentIntentId: null });
-      options?.onError?.(message);
+      optionsRef.current?.onError?.(message);
       return { success: false, error: message };
     }
 
     if (paymentIntent?.status === 'succeeded') {
       setState({ isProcessing: false, isSuccess: true, error: null, paymentIntentId: paymentIntent.id });
-      options?.onSuccess?.(paymentIntent.id);
+      optionsRef.current?.onSuccess?.(paymentIntent.id);
       return { success: true, paymentIntentId: paymentIntent.id };
     }
 
     setState({ isProcessing: false, isSuccess: false, error: null, paymentIntentId: paymentIntent?.id ?? null });
     return { success: false, status: paymentIntent?.status };
-  }, [stripe, elements, options]);
+  }, [stripe, elements]);
 
   const reset = useCallback(() => {
     setState({ isProcessing: false, isSuccess: false, error: null, paymentIntentId: null });

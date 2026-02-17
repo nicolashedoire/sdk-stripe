@@ -1,6 +1,7 @@
 import type Stripe from 'stripe';
 import { getStripe } from '../stripe-client';
 import { handleStripeError, success } from '../../utils/errors';
+import { validateStripeId, validateAmount, validateCurrency, validateUrl, validateMetadata, sanitizeLimit } from '../../utils/validators';
 import type {
   CreateConnectAccountInput,
   CreateAccountLinkInput,
@@ -12,18 +13,24 @@ import type {
 // ─── Connected Accounts ──────────────────────────────────────────────
 
 export async function createConnectAccount(
-  input: CreateConnectAccountInput
+  input: CreateConnectAccountInput,
+  options?: { idempotencyKey?: string }
 ): Promise<SDKResult<Stripe.Account>> {
   try {
+    if (input.metadata) validateMetadata(input.metadata);
+
     const stripe = getStripe();
-    const account = await stripe.accounts.create({
-      type: input.type,
-      country: input.country,
-      email: input.email,
-      capabilities: input.capabilities,
-      business_type: input.businessType,
-      metadata: input.metadata,
-    });
+    const account = await stripe.accounts.create(
+      {
+        type: input.type,
+        country: input.country,
+        email: input.email,
+        capabilities: input.capabilities,
+        business_type: input.businessType,
+        metadata: input.metadata,
+      },
+      options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined
+    );
     return success(account);
   } catch (error) {
     return handleStripeError(error);
@@ -34,6 +41,7 @@ export async function retrieveConnectAccount(
   accountId: string
 ): Promise<SDKResult<Stripe.Account>> {
   try {
+    validateStripeId(accountId, 'account');
     const stripe = getStripe();
     const account = await stripe.accounts.retrieve(accountId);
     return success(account);
@@ -46,6 +54,7 @@ export async function deleteConnectAccount(
   accountId: string
 ): Promise<SDKResult<Stripe.DeletedAccount>> {
   try {
+    validateStripeId(accountId, 'account');
     const stripe = getStripe();
     const deleted = await stripe.accounts.del(accountId);
     return success(deleted);
@@ -60,7 +69,7 @@ export async function listConnectAccounts(
   try {
     const stripe = getStripe();
     const accounts = await stripe.accounts.list({
-      limit: input?.limit ?? 10,
+      limit: sanitizeLimit(input?.limit),
       starting_after: input?.startingAfter,
       ending_before: input?.endingBefore,
     });
@@ -76,6 +85,10 @@ export async function createAccountLink(
   input: CreateAccountLinkInput
 ): Promise<SDKResult<Stripe.AccountLink>> {
   try {
+    validateStripeId(input.accountId, 'account');
+    validateUrl(input.refreshUrl, 'refreshUrl');
+    validateUrl(input.returnUrl, 'returnUrl');
+
     const stripe = getStripe();
     const accountLink = await stripe.accountLinks.create({
       account: input.accountId,
@@ -92,18 +105,27 @@ export async function createAccountLink(
 // ─── Transfers ───────────────────────────────────────────────────────
 
 export async function createTransfer(
-  input: CreateTransferInput
+  input: CreateTransferInput,
+  options?: { idempotencyKey?: string }
 ): Promise<SDKResult<Stripe.Transfer>> {
   try {
+    validateAmount(input.amount, 'transfer amount');
+    validateCurrency(input.currency);
+    validateStripeId(input.destinationAccountId, 'account');
+    if (input.metadata) validateMetadata(input.metadata);
+
     const stripe = getStripe();
-    const transfer = await stripe.transfers.create({
-      amount: input.amount,
-      currency: input.currency,
-      destination: input.destinationAccountId,
-      description: input.description,
-      metadata: input.metadata,
-      source_transaction: input.sourceTransaction,
-    });
+    const transfer = await stripe.transfers.create(
+      {
+        amount: input.amount,
+        currency: input.currency,
+        destination: input.destinationAccountId,
+        description: input.description,
+        metadata: input.metadata,
+        source_transaction: input.sourceTransaction,
+      },
+      options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined
+    );
     return success(transfer);
   } catch (error) {
     return handleStripeError(error);
@@ -114,9 +136,10 @@ export async function listTransfers(
   input?: PaginationInput & { destinationAccountId?: string }
 ): Promise<SDKResult<Stripe.ApiList<Stripe.Transfer>>> {
   try {
+    if (input?.destinationAccountId) validateStripeId(input.destinationAccountId, 'account');
     const stripe = getStripe();
     const transfers = await stripe.transfers.list({
-      limit: input?.limit ?? 10,
+      limit: sanitizeLimit(input?.limit),
       starting_after: input?.startingAfter,
       ending_before: input?.endingBefore,
       destination: input?.destinationAccountId,
@@ -132,15 +155,23 @@ export async function listTransfers(
 export async function createPayout(
   amount: number,
   currency: string,
-  metadata?: Record<string, string>
+  metadata?: Record<string, string>,
+  options?: { idempotencyKey?: string }
 ): Promise<SDKResult<Stripe.Payout>> {
   try {
+    validateAmount(amount, 'payout amount');
+    const normalizedCurrency = validateCurrency(currency);
+    if (metadata) validateMetadata(metadata);
+
     const stripe = getStripe();
-    const payout = await stripe.payouts.create({
-      amount,
-      currency,
-      metadata,
-    });
+    const payout = await stripe.payouts.create(
+      {
+        amount,
+        currency: normalizedCurrency,
+        metadata,
+      },
+      options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined
+    );
     return success(payout);
   } catch (error) {
     return handleStripeError(error);
@@ -153,7 +184,7 @@ export async function listPayouts(
   try {
     const stripe = getStripe();
     const payouts = await stripe.payouts.list({
-      limit: input?.limit ?? 10,
+      limit: sanitizeLimit(input?.limit),
       starting_after: input?.startingAfter,
       ending_before: input?.endingBefore,
       status: input?.status,
@@ -182,7 +213,7 @@ export async function listBalanceTransactions(
   try {
     const stripe = getStripe();
     const transactions = await stripe.balanceTransactions.list({
-      limit: input?.limit ?? 10,
+      limit: sanitizeLimit(input?.limit),
       starting_after: input?.startingAfter,
       ending_before: input?.endingBefore,
       type: input?.type,

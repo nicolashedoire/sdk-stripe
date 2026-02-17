@@ -7,6 +7,7 @@ export interface StripeSDKConfig {
   webhookSecret?: string;
   apiVersion?: Stripe.LatestApiVersion;
   appInfo?: Stripe.AppInfo;
+  maxNetworkRetries?: number;
 }
 
 // ─── Payment Types ───────────────────────────────────────────────────

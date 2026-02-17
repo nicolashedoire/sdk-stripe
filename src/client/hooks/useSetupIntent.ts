@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useStripe, useElements } from '@stripe/react-stripe-js';
 
 interface SetupState {
@@ -17,9 +17,22 @@ interface UseSetupIntentOptions {
   returnUrl?: string;
 }
 
+function validateReturnUrl(url: string): void {
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('returnUrl must use http or https protocol');
+    }
+  } catch {
+    throw new Error('returnUrl must be a valid URL');
+  }
+}
+
 export function useSetupIntent(options?: UseSetupIntentOptions) {
   const stripe = useStripe();
   const elements = useElements();
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const [state, setState] = useState<SetupState>({
     isProcessing: false,
@@ -37,12 +50,17 @@ export function useSetupIntent(options?: UseSetupIntentOptions) {
       return { success: false, error: 'Stripe not loaded yet' };
     }
 
+    const returnUrl = overrides?.returnUrl ?? optionsRef.current?.returnUrl ?? (typeof window !== 'undefined' ? window.location.href : '');
+    if (returnUrl && returnUrl !== window.location.href) {
+      validateReturnUrl(returnUrl);
+    }
+
     setState({ isProcessing: true, isSuccess: false, error: null, setupIntentId: null, paymentMethodId: null });
 
     const { error, setupIntent } = await stripe.confirmSetup({
       elements,
       confirmParams: {
-        return_url: overrides?.returnUrl ?? options?.returnUrl ?? (typeof window !== 'undefined' ? window.location.href : ''),
+        return_url: returnUrl,
       },
       redirect: 'if_required',
     });
@@ -50,7 +68,7 @@ export function useSetupIntent(options?: UseSetupIntentOptions) {
     if (error) {
       const message = error.message ?? 'Setup failed';
       setState({ isProcessing: false, isSuccess: false, error: message, setupIntentId: null, paymentMethodId: null });
-      options?.onError?.(message);
+      optionsRef.current?.onError?.(message);
       return { success: false, error: message };
     }
 
@@ -59,13 +77,13 @@ export function useSetupIntent(options?: UseSetupIntentOptions) {
         ? setupIntent.payment_method
         : setupIntent.payment_method?.id ?? null;
       setState({ isProcessing: false, isSuccess: true, error: null, setupIntentId: setupIntent.id, paymentMethodId: pmId });
-      if (pmId) options?.onSuccess?.(setupIntent.id, pmId);
+      if (pmId) optionsRef.current?.onSuccess?.(setupIntent.id, pmId);
       return { success: true, setupIntentId: setupIntent.id, paymentMethodId: pmId };
     }
 
     setState({ isProcessing: false, isSuccess: false, error: null, setupIntentId: setupIntent?.id ?? null, paymentMethodId: null });
     return { success: false, status: setupIntent?.status };
-  }, [stripe, elements, options]);
+  }, [stripe, elements]);
 
   const reset = useCallback(() => {
     setState({ isProcessing: false, isSuccess: false, error: null, setupIntentId: null, paymentMethodId: null });

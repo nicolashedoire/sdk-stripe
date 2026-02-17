@@ -59,24 +59,15 @@ export function createWebhookHandler(config: WebhookConfig) {
 
 /**
  * Helper for Next.js App Router webhook route
- *
- * Usage in app/api/webhooks/stripe/route.ts:
- *
- * ```ts
- * import { createNextWebhookHandler } from '@stripe-sdk/core/webhooks';
- *
- * export const POST = createNextWebhookHandler({
- *   handlers: {
- *     'payment_intent.succeeded': async (event) => { ... },
- *     'customer.subscription.created': async (event) => { ... },
- *   },
- * });
- * ```
  */
 export function createNextWebhookHandler(config: WebhookConfig) {
   const handler = createWebhookHandler(config);
 
   return async function POST(request: Request): Promise<Response> {
+    if (request.method !== 'POST') {
+      return new Response(null, { status: 405 });
+    }
+
     try {
       const contentLength = request.headers.get('content-length');
       if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
@@ -87,6 +78,14 @@ export function createNextWebhookHandler(config: WebhookConfig) {
       }
 
       const body = await request.text();
+
+      if (body.length > MAX_BODY_SIZE) {
+        return new Response(JSON.stringify({ error: 'Webhook body too large' }), {
+          status: 413,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       const signature = request.headers.get('stripe-signature');
 
       if (!signature) {
@@ -103,9 +102,9 @@ export function createNextWebhookHandler(config: WebhookConfig) {
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Webhook handler failed';
+      console.error('[@stripe-sdk/core] Webhook error:', error);
 
-      return new Response(JSON.stringify({ error: message }), {
+      return new Response(JSON.stringify({ error: 'Webhook processing failed' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -115,20 +114,6 @@ export function createNextWebhookHandler(config: WebhookConfig) {
 
 /**
  * Helper for Next.js Pages Router webhook route
- *
- * Usage in pages/api/webhooks/stripe.ts:
- *
- * ```ts
- * import { createPagesWebhookHandler } from '@stripe-sdk/core/webhooks';
- *
- * export const config = { api: { bodyParser: false } };
- *
- * export default createPagesWebhookHandler({
- *   handlers: {
- *     'payment_intent.succeeded': async (event) => { ... },
- *   },
- * });
- * ```
  */
 export function createPagesWebhookHandler(webhookConfig: WebhookConfig) {
   const handler = createWebhookHandler(webhookConfig);
@@ -154,8 +139,8 @@ export function createPagesWebhookHandler(webhookConfig: WebhookConfig) {
       const result = await handler(body, signature);
       res.status(200).json(result);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Webhook handler failed';
-      res.status(400).json({ error: message });
+      console.error('[@stripe-sdk/core] Webhook error:', error);
+      res.status(400).json({ error: 'Webhook processing failed' });
     }
   };
 }
@@ -184,16 +169,21 @@ function getRawBody(req: { on?: (event: string, cb: (...args: unknown[]) => void
     }
     const chunks: Buffer[] = [];
     let totalLength = 0;
+    let rejected = false;
     req.on('data', (chunk: unknown) => {
+      if (rejected) return;
       const buf = Buffer.from(chunk as Uint8Array);
       totalLength += buf.length;
       if (totalLength > MAX_BODY_SIZE) {
+        rejected = true;
         reject(new Error('Webhook body too large'));
         return;
       }
       chunks.push(buf);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('end', () => {
+      if (!rejected) resolve(Buffer.concat(chunks).toString('utf8'));
+    });
     req.on('error', reject);
   });
 }

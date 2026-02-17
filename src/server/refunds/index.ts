@@ -1,6 +1,7 @@
 import type Stripe from 'stripe';
 import { getStripe } from '../stripe-client';
 import { handleStripeError, success } from '../../utils/errors';
+import { validateStripeId, validateAmount, validateMetadata, sanitizeLimit } from '../../utils/validators';
 import type {
   CreateRefundInput,
   UpdateDisputeInput,
@@ -11,17 +12,25 @@ import type {
 // ─── Refunds ─────────────────────────────────────────────────────────
 
 export async function createRefund(
-  input: CreateRefundInput
+  input: CreateRefundInput,
+  options?: { idempotencyKey?: string }
 ): Promise<SDKResult<Stripe.Refund>> {
   try {
+    if (input.paymentIntentId) validateStripeId(input.paymentIntentId, 'paymentIntent');
+    if (input.amount !== undefined) validateAmount(input.amount, 'refund amount');
+    if (input.metadata) validateMetadata(input.metadata);
+
     const stripe = getStripe();
-    const refund = await stripe.refunds.create({
-      payment_intent: input.paymentIntentId,
-      charge: input.chargeId,
-      amount: input.amount,
-      reason: input.reason,
-      metadata: input.metadata,
-    });
+    const refund = await stripe.refunds.create(
+      {
+        payment_intent: input.paymentIntentId,
+        charge: input.chargeId,
+        amount: input.amount,
+        reason: input.reason,
+        metadata: input.metadata,
+      },
+      options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined
+    );
     return success(refund);
   } catch (error) {
     return handleStripeError(error);
@@ -32,6 +41,7 @@ export async function retrieveRefund(
   refundId: string
 ): Promise<SDKResult<Stripe.Refund>> {
   try {
+    validateStripeId(refundId, 'refund');
     const stripe = getStripe();
     const refund = await stripe.refunds.retrieve(refundId);
     return success(refund);
@@ -44,9 +54,10 @@ export async function listRefunds(
   input?: PaginationInput & { paymentIntentId?: string; chargeId?: string }
 ): Promise<SDKResult<Stripe.ApiList<Stripe.Refund>>> {
   try {
+    if (input?.paymentIntentId) validateStripeId(input.paymentIntentId, 'paymentIntent');
     const stripe = getStripe();
     const refunds = await stripe.refunds.list({
-      limit: input?.limit ?? 10,
+      limit: sanitizeLimit(input?.limit),
       starting_after: input?.startingAfter,
       ending_before: input?.endingBefore,
       payment_intent: input?.paymentIntentId,
@@ -64,6 +75,7 @@ export async function retrieveDispute(
   disputeId: string
 ): Promise<SDKResult<Stripe.Dispute>> {
   try {
+    validateStripeId(disputeId, 'dispute');
     const stripe = getStripe();
     const dispute = await stripe.disputes.retrieve(disputeId);
     return success(dispute);
@@ -76,6 +88,9 @@ export async function updateDispute(
   input: UpdateDisputeInput
 ): Promise<SDKResult<Stripe.Dispute>> {
   try {
+    validateStripeId(input.disputeId, 'dispute');
+    if (input.metadata) validateMetadata(input.metadata);
+
     const stripe = getStripe();
     const dispute = await stripe.disputes.update(input.disputeId, {
       evidence: input.evidence
@@ -102,6 +117,7 @@ export async function closeDispute(
   disputeId: string
 ): Promise<SDKResult<Stripe.Dispute>> {
   try {
+    validateStripeId(disputeId, 'dispute');
     const stripe = getStripe();
     const dispute = await stripe.disputes.close(disputeId);
     return success(dispute);
@@ -116,7 +132,7 @@ export async function listDisputes(
   try {
     const stripe = getStripe();
     const disputes = await stripe.disputes.list({
-      limit: input?.limit ?? 10,
+      limit: sanitizeLimit(input?.limit),
       starting_after: input?.startingAfter,
       ending_before: input?.endingBefore,
     });

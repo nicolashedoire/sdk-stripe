@@ -20,6 +20,21 @@ export function useStripeConfig(): StripeContextValue {
   return context;
 }
 
+function validatePublishableKey(key: string): void {
+  if (!key || typeof key !== 'string') {
+    throw new Error('StripeProvider requires a publishableKey');
+  }
+  if (key.startsWith('sk_')) {
+    throw new Error(
+      'StripeProvider received a secret key (sk_*). Use a publishable key (pk_*) instead. ' +
+      'Secret keys must NEVER be used on the client side.'
+    );
+  }
+  if (!key.startsWith('pk_')) {
+    throw new Error('StripeProvider requires a publishable key starting with "pk_"');
+  }
+}
+
 export interface StripeProviderProps {
   publishableKey: string;
   children: ReactNode;
@@ -33,6 +48,8 @@ export function StripeProvider({
   options,
   locale,
 }: StripeProviderProps) {
+  validatePublishableKey(publishableKey);
+
   const stripePromise = useMemo(
     () => loadStripe(publishableKey, locale ? { locale: locale as 'auto' } : undefined),
     [publishableKey, locale]
@@ -47,10 +64,6 @@ export function StripeProvider({
   );
 }
 
-/**
- * Provider for embedding Stripe Elements with a client secret.
- * Use this to wrap payment forms after creating a PaymentIntent or SetupIntent.
- */
 export interface StripeElementsProviderProps {
   publishableKey: string;
   clientSecret: string;
@@ -68,6 +81,12 @@ export function StripeElementsProvider({
   locale,
   loader = 'auto',
 }: StripeElementsProviderProps) {
+  validatePublishableKey(publishableKey);
+
+  if (!clientSecret || typeof clientSecret !== 'string') {
+    throw new Error('StripeElementsProvider requires a clientSecret');
+  }
+
   const stripePromise = useMemo(
     () => loadStripe(publishableKey, locale ? { locale: locale as 'auto' } : undefined),
     [publishableKey, locale]

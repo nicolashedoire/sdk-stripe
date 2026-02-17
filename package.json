@@ -47,12 +47,12 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@stripe/react-stripe-js": ">=2.0.0",
-    "@stripe/stripe-js": ">=2.0.0",
+    "@stripe/react-stripe-js": ">=2.9.0",
+    "@stripe/stripe-js": ">=4.0.0",
     "next": ">=13.0.0",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0",
-    "stripe": ">=14.0.0"
+    "stripe": ">=17.0.0"
   },
   "peerDependenciesMeta": {
     "next": {
@@ -101,9 +101,12 @@
     "vue",
     "angular"
   ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/nicolashedoire/sdk-stripe.git"
   }
 }
